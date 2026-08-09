@@ -1,9 +1,11 @@
 package me.rerere.rikkahub.di
 
+import android.content.Context
 import com.google.firebase.Firebase
 import com.google.firebase.analytics.analytics
 import com.google.firebase.crashlytics.crashlytics
 import kotlinx.serialization.json.Json
+import java.io.File
 import me.rerere.rikkahub.AppScope
 import me.rerere.rikkahub.data.ai.tools.local.LocalTools
 import me.rerere.rikkahub.data.event.AppEventBus
@@ -15,6 +17,8 @@ import me.rerere.rikkahub.utils.JsonInstant
 import me.rerere.rikkahub.utils.SoundEffectPlayer
 import me.rerere.rikkahub.utils.UpdateChecker
 import me.rerere.rikkahub.data.agent.AgentDeployer
+import me.rerere.rikkahub.data.agent.AgentRuntime
+import me.rerere.workspace.ProotProcessLauncher
 import me.rerere.rikkahub.web.WebServerManager
 import me.rerere.tunnel.CloudflareApi
 import me.rerere.tunnel.TunnelRunner
@@ -87,7 +91,8 @@ val appModule = module {
             filesManager = get(),
             skillManager = get(),
             workspaceRepository = get(),
-            folderRepository = get()
+            folderRepository = get(),
+            agentRuntime = get()
         )
     }
 
@@ -108,4 +113,16 @@ val appModule = module {
     single<CloudflareApi> { CloudflareApi() }
 
     single<AgentDeployer> { AgentDeployer(context = get(), workspaceManager = get()) }
+
+    // Agent 模式: 容器内常驻 pi RPC 会话。ProotProcessLauncher 与 WorkspaceManager
+    // 共用同一个 baseDir/挂载表, 否则 pi 看到的文件系统与工具看到的不是同一份。
+    single<ProotProcessLauncher> {
+        val ctx: Context = get()
+        ProotProcessLauncher(
+            nativeLibraryDir = File(ctx.applicationInfo.nativeLibraryDir),
+            baseDir = File(ctx.filesDir, "workspaces"),
+            bindMounts = workspaceBindMounts(ctx),
+        )
+    }
+    single<AgentRuntime> { AgentRuntime(launcher = get(), settingsStore = get()) }
 }

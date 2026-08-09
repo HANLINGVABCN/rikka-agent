@@ -434,6 +434,10 @@
   <string name="no_text_content_to_copy">No text content available to copy</string>
   <string name="notification_channel_chat_completed">Chat Completed</string>
   <string name="notification_channel_chat_live_update">Chat Generation Progress</string>
+  <string name="agent_mode">Agent mode</string>
+  <string name="agent_mode_error_title">Agent error</string>
+  <string name="agent_mode_no_workspace">No container with a ready shell. Install a rootfs and deploy the agent first.</string>
+  <string name="agent_mode_pick_workspace">Pick a container</string>
   <string name="notification_channel_container">Container</string>
   <string name="notification_channel_tunnel">Tunnel</string>
   <string name="notification_channel_web_server">Web Server</string>

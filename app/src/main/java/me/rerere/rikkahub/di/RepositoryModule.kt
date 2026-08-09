@@ -87,7 +87,7 @@ val repositoryModule = module {
  * 一次性 runner、常驻 runner 和 [WorkspaceManager] 的路径解析都读这一份,
  * 三处必须一致, 否则同一个 rootfs 路径在不同 runner 下会落到不同宿主目录。
  */
-private fun workspaceBindMounts(context: Context): List<WorkspaceBindMount> = listOf(
+internal fun workspaceBindMounts(context: Context): List<WorkspaceBindMount> = listOf(
     WorkspaceBindMount(
         source = File(context.filesDir, FileFolders.SKILLS).apply { mkdirs() },
         target = "/skills",
