@@ -41,7 +41,9 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -54,6 +56,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.core.content.FileProvider
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import me.rerere.hugeicons.HugeIcons
 import me.rerere.hugeicons.stroke.ArrowTurnBackward
@@ -72,6 +75,7 @@ import me.rerere.rikkahub.data.ai.tools.resolveWorkspaceToolApproval
 import me.rerere.rikkahub.data.db.entity.WorkspaceEntity
 import androidx.compose.ui.res.stringResource
 import me.rerere.rikkahub.R
+import me.rerere.rikkahub.service.ContainerService
 import me.rerere.rikkahub.ui.components.nav.BackButton
 import me.rerere.rikkahub.ui.components.ui.ImagePreviewDialog
 import me.rerere.rikkahub.ui.components.ui.RikkaConfirmDialog
@@ -79,12 +83,14 @@ import me.rerere.rikkahub.ui.context.LocalNavController
 import me.rerere.rikkahub.ui.theme.CustomColors
 import me.rerere.rikkahub.utils.fileSizeToString
 import me.rerere.rikkahub.utils.plus
+import me.rerere.workspace.PersistentProotShellRunner
 import me.rerere.workspace.RootfsInstallProgress
 import me.rerere.workspace.RootfsInstallStage
 import me.rerere.workspace.WorkspaceFileEntry
 import me.rerere.workspace.WorkspaceShellStatus
 import me.rerere.workspace.WorkspaceStorageArea
 import org.koin.androidx.compose.koinViewModel
+import org.koin.compose.koinInject
 import org.koin.core.parameter.parametersOf
 
 @Composable
@@ -389,10 +395,97 @@ private fun WorkspaceBasicPage(
         }
 
         item {
+            PersistentContainerCard(
+                workspaceId = workspace?.id?.toString(),
+                rootfsReady = rootfsReady,
+            )
+        }
+
+        item {
             WorkspaceToolApprovalCard(
                 workspace = workspace,
                 onToolApprovalChange = onToolApprovalChange,
             )
+        }
+    }
+}
+
+/**
+ * 容器常驻开关。
+ *
+ * 关掉时容器仍然可用 —— 每条命令起一个 proot 进程(一次性模式)。打开后维持一个
+ * 长活的 bash, 跨命令保留 cd/export, 后台进程也能活下来。agent 常驻依赖这个。
+ */
+@Composable
+private fun PersistentContainerCard(
+    workspaceId: String?,
+    rootfsReady: Boolean,
+) {
+    val context = LocalContext.current
+    val shellRunner: PersistentProotShellRunner = koinInject()
+    // 会话状态在服务里, 这边只能轮询 —— 加个 tick 让开关切换后 UI 能刷新
+    var tick by remember { mutableIntStateOf(0) }
+    val running = remember(tick, workspaceId) {
+        workspaceId != null && shellRunner.isSessionAlive(workspaceId)
+    }
+
+    LaunchedEffect(workspaceId) {
+        while (true) {
+            delay(2000)
+            tick++
+        }
+    }
+
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CustomColors.cardColorsOnSurfaceContainer,
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp),
+        ) {
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text(
+                    text = stringResource(R.string.workspace_detail_persistent),
+                    style = MaterialTheme.typography.titleMedium,
+                )
+                Text(
+                    text = stringResource(R.string.workspace_detail_persistent_desc),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    text = if (running) {
+                        stringResource(R.string.workspace_detail_persistent_on)
+                    } else {
+                        stringResource(R.string.workspace_detail_persistent_off)
+                    },
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+                Switch(
+                    checked = running,
+                    // rootfs 没装时开了也起不来, 直接禁用比让用户点了没反应好
+                    enabled = workspaceId != null && rootfsReady,
+                    onCheckedChange = { checked ->
+                        val id = workspaceId ?: return@Switch
+                        if (checked) {
+                            ContainerService.start(context, id)
+                        } else {
+                            ContainerService.stop(context)
+                        }
+                        tick++
+                    },
+                )
+            }
         }
     }
 }

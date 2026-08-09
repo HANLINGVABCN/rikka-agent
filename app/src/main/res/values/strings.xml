@@ -1214,6 +1214,10 @@
   <string name="workspace_detail_shell_status">Shell Status</string>
   <string name="workspace_detail_loading">Loading</string>
   <string name="workspace_detail_enable_shell">Enable Shell</string>
+  <string name="workspace_detail_persistent">Keep Container Running</string>
+  <string name="workspace_detail_persistent_desc">Keeps one long-lived shell alive so working directory, environment variables and background processes survive between commands. Required for running an agent inside the container.</string>
+  <string name="workspace_detail_persistent_on">Running</string>
+  <string name="workspace_detail_persistent_off">Stopped</string>
   <string name="workspace_detail_enable_shell_desc">Allow this workspace to run a terminal environment using local Rootfs</string>
   <string name="workspace_detail_tool_approval">Tool Approval</string>
   <string name="workspace_detail_tool_approval_desc">When enabled, user confirmation is required before AI calls this tool</string>

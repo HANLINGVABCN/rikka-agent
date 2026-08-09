@@ -1,0 +1,165 @@
+name: 发布 Release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "版本号（如 0.1.0），留空则用 run_number"
+        required: false
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: 安装 JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - name: 安装 pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 11
+
+      - name: 安装 Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: web-ui/pnpm-lock.yaml
+
+      - name: 安装前端依赖
+        working-directory: web-ui
+        run: pnpm install --frozen-lockfile
+
+      - name: Gradle 缓存
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
+
+      - name: 下载并内置 cloudflared
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: bash scripts/download-cloudflared.sh
+
+      - name: 生成占位 google-services.json
+        run: |
+          if [ ! -f app/google-services.json ]; then
+            cat > app/google-services.json <<'JSON'
+          {
+            "project_info": {
+              "project_number": "000000000000",
+              "project_id": "rikka-agent-ci",
+              "storage_bucket": "rikka-agent-ci.appspot.com"
+            },
+            "client": [
+              {
+                "client_info": {
+                  "mobilesdk_app_id": "1:000000000000:android:0000000000000000000000",
+                  "android_client_info": { "package_name": "me.rerere.rikkahub" }
+                },
+                "oauth_client": [],
+                "api_key": [ { "current_key": "AIzaSyAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA" } ],
+                "services": { "appinvite_service": { "other_platform_oauth_client": [] } }
+              },
+              {
+                "client_info": {
+                  "mobilesdk_app_id": "1:000000000000:android:1111111111111111111111",
+                  "android_client_info": { "package_name": "me.rerere.rikkahub.debug" }
+                },
+                "oauth_client": [],
+                "api_key": [ { "current_key": "AIzaSyAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA" } ],
+                "services": { "appinvite_service": { "other_platform_oauth_client": [] } }
+              }
+            ],
+            "configuration_version": "1"
+          }
+          JSON
+          fi
+
+      # 有签名密钥就用固定签名（可覆盖升级），没有则回落到 debug 签名。
+      # fork 本仓库的人没有 secret，仍然能构建出可安装的包，只是不能覆盖官方版本。
+      - name: 还原签名配置
+        id: signing
+        env:
+          KEYSTORE_BASE64: ${{ secrets.RIKKA_RELEASE_KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.RIKKA_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.RIKKA_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.RIKKA_KEY_PASSWORD }}
+        run: |
+          if [ -z "$KEYSTORE_BASE64" ]; then
+            echo "没有签名密钥，将使用 debug 签名构建"
+            echo "signed=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "$KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/release.jks"
+          {
+            echo "storeFile=$RUNNER_TEMP/release.jks"
+            echo "storePassword=$KEYSTORE_PASSWORD"
+            echo "keyAlias=$KEY_ALIAS"
+            echo "keyPassword=$KEY_PASSWORD"
+          } > local.properties
+          echo "signed=true" >> "$GITHUB_OUTPUT"
+
+      - name: 计算版本号
+        id: version
+        run: |
+          if [ -n "${{ github.event.inputs.version }}" ]; then
+            V="${{ github.event.inputs.version }}"
+          elif [ "${GITHUB_REF_TYPE}" = "tag" ]; then
+            V="${GITHUB_REF_NAME#v}"
+          else
+            V="0.1.${GITHUB_RUN_NUMBER}"
+          fi
+          echo "version=$V" >> "$GITHUB_OUTPUT"
+          echo "tag=v$V" >> "$GITHUB_OUTPUT"
+
+      - name: 编译 release APK
+        run: |
+          chmod +x gradlew
+          ./gradlew assembleRelease --stacktrace
+
+      # splits 会产出多个架构的 APK 加一个 universal，统一改名便于识别
+      - name: 整理产物
+        id: artifacts
+        run: |
+          mkdir -p dist
+          V="${{ steps.version.outputs.version }}"
+          for f in app/build/outputs/apk/release/*.apk; do
+            [ -e "$f" ] || continue
+            base="$(basename "$f" .apk)"
+            abi="$(echo "$base" | sed -E 's/^app-//; s/-release.*$//')"
+            [ -z "$abi" ] && abi="universal"
+            cp "$f" "dist/rikka-agent-$V-$abi.apk"
+          done
+          ls -la dist/
+
+      - name: 发布 Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.version.outputs.tag }}
+          name: ${{ steps.version.outputs.tag }}
+          generate_release_notes: true
+          body: |
+            手机上的容器 + agent + AI chat。
+
+            **架构选择**：一般手机装 `arm64-v8a`，不确定就装 `universal`。
+
+            签名状态：${{ steps.signing.outputs.signed == 'true' && '固定发布签名（可覆盖升级）' || 'debug 签名（无发布密钥，需先卸载旧版）' }}
+
+            > ⚠️ 早期版本。容器常驻与隧道功能未经充分真机验证。
+            > 隧道会把 chat 暴露到公网，务必先设置访问密码。
+          files: dist/*.apk
