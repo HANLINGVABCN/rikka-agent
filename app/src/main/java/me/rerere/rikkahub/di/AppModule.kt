@@ -15,6 +15,8 @@ import me.rerere.rikkahub.utils.JsonInstant
 import me.rerere.rikkahub.utils.SoundEffectPlayer
 import me.rerere.rikkahub.utils.UpdateChecker
 import me.rerere.rikkahub.web.WebServerManager
+import me.rerere.tunnel.CloudflareApi
+import me.rerere.tunnel.TunnelRunner
 import me.rerere.tts.provider.TTSManager
 import org.koin.dsl.module
 
@@ -99,4 +101,8 @@ val appModule = module {
             filesManager = get()
         )
     }
+
+    // 隧道: TunnelService 与设置页共用同一个 runner 实例, 否则设置页读不到运行状态
+    single<TunnelRunner> { TunnelRunner(context = get()) }
+    single<CloudflareApi> { CloudflareApi() }
 }
