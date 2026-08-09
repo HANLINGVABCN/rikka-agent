@@ -75,11 +75,14 @@ import me.rerere.rikkahub.data.ai.tools.resolveWorkspaceToolApproval
 import me.rerere.rikkahub.data.db.entity.WorkspaceEntity
 import androidx.compose.ui.res.stringResource
 import me.rerere.rikkahub.R
+import me.rerere.rikkahub.data.agent.AgentDeployState
+import me.rerere.rikkahub.data.agent.AgentDeployer
 import me.rerere.rikkahub.service.ContainerService
 import me.rerere.rikkahub.ui.components.nav.BackButton
 import me.rerere.rikkahub.ui.components.ui.ImagePreviewDialog
 import me.rerere.rikkahub.ui.components.ui.RikkaConfirmDialog
 import me.rerere.rikkahub.ui.context.LocalNavController
+import me.rerere.rikkahub.ui.context.LocalToaster
 import me.rerere.rikkahub.ui.theme.CustomColors
 import me.rerere.rikkahub.utils.fileSizeToString
 import me.rerere.rikkahub.utils.plus
@@ -402,10 +405,108 @@ private fun WorkspaceBasicPage(
         }
 
         item {
+            AgentDeployCard(
+                workspaceId = workspace?.id?.toString(),
+                rootfsReady = rootfsReady,
+            )
+        }
+
+        item {
             WorkspaceToolApprovalCard(
                 workspace = workspace,
                 onToolApprovalChange = onToolApprovalChange,
             )
+        }
+    }
+}
+
+/**
+ * pi agent 部署卡片。
+ *
+ * 部署逻辑在 assets/container/deploy-pi.sh —— 装 Node、装 npm 包这些事 shell 天然
+ * 合适。这里只负责触发和显示结果。
+ */
+@Composable
+private fun AgentDeployCard(
+    workspaceId: String?,
+    rootfsReady: Boolean,
+) {
+    val deployer: AgentDeployer = koinInject()
+    val deployState by deployer.state.collectAsStateWithLifecycle()
+    val scope = rememberCoroutineScope()
+    val toaster = LocalToaster.current
+
+    LaunchedEffect(workspaceId, rootfsReady) {
+        if (workspaceId != null && rootfsReady) {
+            runCatching { deployer.check(workspaceId) }
+        }
+    }
+
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CustomColors.cardColorsOnSurfaceContainer,
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp),
+        ) {
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text(
+                    text = stringResource(R.string.workspace_detail_agent),
+                    style = MaterialTheme.typography.titleMedium,
+                )
+                Text(
+                    text = stringResource(R.string.workspace_detail_agent_desc),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+
+            when (val state = deployState) {
+                is AgentDeployState.Ready -> Text(
+                    text = stringResource(R.string.workspace_detail_agent_ready, state.version),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.primary,
+                )
+
+                is AgentDeployState.Failed -> Text(
+                    text = state.message,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.error,
+                )
+
+                else -> Unit
+            }
+
+            Button(
+                onClick = {
+                    val id = workspaceId ?: return@Button
+                    scope.launch {
+                        deployer.deploy(id)
+                            .onSuccess { toaster.show("OK") }
+                            .onFailure { toaster.show(it.message ?: "failed") }
+                    }
+                },
+                enabled = workspaceId != null && rootfsReady &&
+                    deployState !is AgentDeployState.Deploying,
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Icon(HugeIcons.Bash, contentDescription = null)
+                Text(
+                    text = when (deployState) {
+                        is AgentDeployState.Deploying ->
+                            stringResource(R.string.workspace_detail_agent_deploying)
+
+                        is AgentDeployState.Ready ->
+                            stringResource(R.string.workspace_detail_agent_redeploy)
+
+                        else -> stringResource(R.string.workspace_detail_agent_deploy)
+                    },
+                    modifier = Modifier.padding(start = 8.dp),
+                )
+            }
         }
     }
 }

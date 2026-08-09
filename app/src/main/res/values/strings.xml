@@ -1218,6 +1218,12 @@
   <string name="workspace_detail_persistent_desc">Keeps one long-lived shell alive so working directory, environment variables and background processes survive between commands. Required for running an agent inside the container.</string>
   <string name="workspace_detail_persistent_on">Running</string>
   <string name="workspace_detail_persistent_off">Stopped</string>
+  <string name="workspace_detail_agent">AI Agent (pi)</string>
+  <string name="workspace_detail_agent_desc">Installs Node.js and the pi coding agent inside this container. Downloads about 50 MB and needs a network connection. Requires the container to keep running.</string>
+  <string name="workspace_detail_agent_deploy">Deploy agent</string>
+  <string name="workspace_detail_agent_redeploy">Redeploy</string>
+  <string name="workspace_detail_agent_deploying">Deploying…</string>
+  <string name="workspace_detail_agent_ready">Ready: %s</string>
   <string name="workspace_detail_enable_shell_desc">Allow this workspace to run a terminal environment using local Rootfs</string>
   <string name="workspace_detail_tool_approval">Tool Approval</string>
   <string name="workspace_detail_tool_approval_desc">When enabled, user confirmation is required before AI calls this tool</string>
