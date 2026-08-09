@@ -165,7 +165,7 @@ class CloudflareApi(
         for (i in 0 until parts.size - 1) {
             val candidate = parts.drop(i).joinToString(".")
             val result = request("GET", "/zones?name=${encode(candidate)}", apiToken)
-            if (result["success"]?.jsonPrimitive?.booleanOrNull() != true) continue
+            if (result["success"]?.jsonPrimitive?.booleanOrNull != true) continue
             result["result"]?.jsonArray?.firstOrNull()?.jsonObject
                 ?.get("id")?.jsonPrimitive?.contentOrNull
                 ?.let { return it }
@@ -196,7 +196,7 @@ class CloudflareApi(
 
     /** Cloudflare 把错误藏在 errors 数组里, 抽出来拼成人话, 否则界面上只能显示一坨 JSON */
     private fun checkSuccess(obj: JsonObject, what: String) {
-        if (obj["success"]?.jsonPrimitive?.booleanOrNull() == true) return
+        if (obj["success"]?.jsonPrimitive?.booleanOrNull == true) return
         val message = obj["errors"]?.jsonArray
             ?.mapNotNull { it.jsonObject["message"]?.jsonPrimitive?.contentOrNull }
             ?.joinToString("; ")
