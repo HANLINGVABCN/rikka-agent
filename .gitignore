@@ -1,0 +1,19 @@
+*.iml
+.gradle
+/local.properties
+/.idea
+.DS_Store
+/build
+/captures
+.externalNativeBuild
+.cxx
+local.properties
+.cursor
+.history
+.kotlin
+# 密钥与私有配置（勿提交）
+/app/google-services.json
+/app/*.key
+/keystore/
+*.jks
+*.keystore
