@@ -5,6 +5,7 @@ import android.content.Context
 import android.util.Log
 import androidx.core.net.toUri
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
@@ -685,6 +686,10 @@ class ChatService(
         )
 
         val buffer = StringBuilder()
+        // 用一个 CompletableDeferred 而不是事后 events.first{}: events 是 replay=0 的
+        // SharedFlow, 先 prompt 再订阅的话, pi 回得快时 agent_settled 会在订阅建立前发完,
+        // 那样就会一直等到超时。这里在同一个 collector 里判定结束, 订阅早于发送。
+        val settled = CompletableDeferred<Unit>()
         val collector = appScope.launch {
             session.events.collect { event ->
                 event.piTextDelta()?.let { delta ->
@@ -697,10 +702,15 @@ class ChatService(
                         )
                     }
                 }
+                if (event.piSettled()) settled.complete(Unit)
             }
         }
 
         try {
+            // launch 只是排队, 协程可能还没真正开始 collect —— 必须等订阅建立后再发,
+            // 否则 replay=0 的 SharedFlow 会丢掉这期间的全部事件
+            session.events.subscriptionCount.first { it > 0 }
+
             if (session.prompt(userText) == null) {
                 addError(
                     IllegalStateException("pi rejected the prompt"),
@@ -710,9 +720,7 @@ class ChatService(
                 return
             }
             // agent_settled 才是"真的停了" —— agent_end 之后还可能有自动重试或队列续跑
-            withTimeoutOrNull(AGENT_TURN_TIMEOUT_MS) {
-                session.events.first { it.piSettled() }
-            }
+            withTimeoutOrNull(AGENT_TURN_TIMEOUT_MS) { settled.await() }
         } finally {
             collector.cancel()
             val finalConversation = getConversationFlow(conversationId).value
