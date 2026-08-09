@@ -31,6 +31,7 @@ sealed interface AgentDeployState {
 class AgentDeployer(
     private val context: Context,
     private val workspaceManager: WorkspaceManager,
+    private val agentRuntime: AgentRuntime,
 ) {
     private val _state = MutableStateFlow<AgentDeployState>(AgentDeployState.NotDeployed)
     val state: StateFlow<AgentDeployState> = _state.asStateFlow()
@@ -54,6 +55,8 @@ class AgentDeployer(
         val output = result.stdout.trim()
         val ready = result.exitCode == 0 && output.isNotBlank() && !output.contains("__MISSING__")
         _state.value = if (ready) AgentDeployState.Ready(output) else AgentDeployState.NotDeployed
+        // 同步给 runtime —— workspace_agent 工具靠这个标记决定要不要暴露
+        if (ready) agentRuntime.markDeployed(root) else agentRuntime.markNotDeployed(root)
         ready
     }
 
@@ -112,6 +115,7 @@ class AgentDeployer(
                 ).stdout.trim()
             }.getOrDefault("unknown")
             _state.value = AgentDeployState.Ready(version)
+            agentRuntime.markDeployed(root)
             Result.success(log)
         } else {
             _state.value = AgentDeployState.Failed(log.takeLast(MAX_ERROR_CHARS))

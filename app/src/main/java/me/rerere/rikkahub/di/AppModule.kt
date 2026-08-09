@@ -112,7 +112,7 @@ val appModule = module {
     single<TunnelRunner> { TunnelRunner(context = get()) }
     single<CloudflareApi> { CloudflareApi() }
 
-    single<AgentDeployer> { AgentDeployer(context = get(), workspaceManager = get()) }
+    single<AgentDeployer> { AgentDeployer(context = get(), workspaceManager = get(), agentRuntime = get()) }
 
     // Agent 模式: 容器内常驻 pi RPC 会话。ProotProcessLauncher 与 WorkspaceManager
     // 共用同一个 baseDir/挂载表, 否则 pi 看到的文件系统与工具看到的不是同一份。

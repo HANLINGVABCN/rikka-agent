@@ -5,7 +5,6 @@ import android.content.Context
 import android.util.Log
 import androidx.core.net.toUri
 import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
@@ -46,8 +45,6 @@ import me.rerere.common.android.Logging
 import me.rerere.rikkahub.AppScope
 import me.rerere.rikkahub.R
 import me.rerere.rikkahub.data.agent.AgentRuntime
-import me.rerere.rikkahub.data.agent.piSettled
-import me.rerere.rikkahub.data.agent.piTextDelta
 import me.rerere.rikkahub.data.ai.GenerationChunk
 import me.rerere.rikkahub.data.ai.GenerationHandler
 import me.rerere.rikkahub.data.ai.mcp.McpManager
@@ -95,9 +92,6 @@ import java.util.concurrent.ConcurrentHashMap
 import kotlin.uuid.Uuid
 
 private const val TAG = "ChatService"
-
-// agent 可能跑很久(装包、编译), 但也不能无限等 —— 超时只是停止等待, pi 进程仍在
-private const val AGENT_TURN_TIMEOUT_MS = 30 * 60 * 1000L
 
 internal fun backgroundTextGenerationParams(
     model: Model,
@@ -478,14 +472,6 @@ class ChatService(
         messageRange: ClosedRange<Int>? = null
     ) {
         val settings = settingsStore.settingsFlow.first()
-
-        // Agent 模式: 整段对话交给容器里的 pi, 主模型不参与。
-        // 放在最前面分流 —— 后面那一大套 provider/工具/transformer 流程在这个模式下全部不适用。
-        if (settings.agentModeEnabled) {
-            handleAgentModeComplete(conversationId, settings.agentModeWorkspaceId)
-            return
-        }
-
         val initialConversation = getConversationFlow(conversationId).value
         val assistant = settings.getAssistantById(initialConversation.assistantId)
             ?: settings.getCurrentAssistant()
@@ -651,83 +637,6 @@ class ChatService(
         }
     }
 
-    /**
-     * Agent 模式的回复生成。
-     *
-     * 用户消息直接送进容器里的 pi, pi 的流式输出逐块拼成助手消息。这里**不经过**
-     * provider/transformer/工具那一整套 —— 上下文、工具调用、多轮迭代全部由 pi
-     * 自己在容器内管理, 这边只是个显示端。
-     */
-    private suspend fun handleAgentModeComplete(conversationId: Uuid, workspaceId: String?) {
-        if (workspaceId.isNullOrBlank()) {
-            addError(
-                IllegalStateException(context.getString(R.string.agent_mode_no_workspace)),
-                conversationId,
-                title = context.getString(R.string.agent_mode_error_title),
-            )
-            return
-        }
-
-        val session = agentRuntime.ensureSession(workspaceId).getOrElse {
-            addError(it, conversationId, title = context.getString(R.string.agent_mode_error_title))
-            return
-        }
-
-        val conversation = getConversationFlow(conversationId).value
-        val userText = conversation.messageNodes.lastOrNull()
-            ?.currentMessage?.toText().orEmpty()
-        if (userText.isBlank()) return
-
-        // 先放一条空的助手消息, 后续流式往里填 —— 与主模型路径的观感保持一致
-        val placeholder = UIMessage(role = MessageRole.ASSISTANT, parts = emptyList())
-        updateConversation(
-            conversationId,
-            conversation.copy(messageNodes = conversation.messageNodes + placeholder.toMessageNode()),
-        )
-
-        val buffer = StringBuilder()
-        // 用一个 CompletableDeferred 而不是事后 events.first{}: events 是 replay=0 的
-        // SharedFlow, 先 prompt 再订阅的话, pi 回得快时 agent_settled 会在订阅建立前发完,
-        // 那样就会一直等到超时。这里在同一个 collector 里判定结束, 订阅早于发送。
-        val settled = CompletableDeferred<Unit>()
-        val collector = appScope.launch {
-            session.events.collect { event ->
-                event.piTextDelta()?.let { delta ->
-                    buffer.append(delta)
-                    updateConversationState(conversationId) { current ->
-                        current.copy(
-                            messageNodes = current.messageNodes.dropLast(1) +
-                                placeholder.copy(parts = listOf(UIMessagePart.Text(buffer.toString())))
-                                    .toMessageNode()
-                        )
-                    }
-                }
-                if (event.piSettled()) settled.complete(Unit)
-            }
-        }
-
-        try {
-            // launch 只是排队, 协程可能还没真正开始 collect —— 必须等订阅建立后再发,
-            // 否则 replay=0 的 SharedFlow 会丢掉这期间的全部事件
-            session.events.subscriptionCount.first { it > 0 }
-
-            if (session.prompt(userText) == null) {
-                addError(
-                    IllegalStateException("pi rejected the prompt"),
-                    conversationId,
-                    title = context.getString(R.string.agent_mode_error_title),
-                )
-                return
-            }
-            // agent_settled 才是"真的停了" —— agent_end 之后还可能有自动重试或队列续跑
-            withTimeoutOrNull(AGENT_TURN_TIMEOUT_MS) { settled.await() }
-        } finally {
-            collector.cancel()
-            val finalConversation = getConversationFlow(conversationId).value
-            saveConversation(conversationId, finalConversation)
-        }
-    }
-
     private suspend fun createWorkspaceToolsIfReady(workspaceId: String?, cwd: String? = null): List<Tool> {
         if (workspaceId.isNullOrBlank()) return emptyList()
         val workspace = workspaceRepository.getById(workspaceId) ?: return emptyList()
@@ -738,7 +647,7 @@ class ChatService(
             )
             return emptyList()
         }
-        return createWorkspaceTools(workspaceId, workspaceRepository, cwd)
+        return createWorkspaceTools(workspaceId, workspaceRepository, cwd, agentRuntime)
     }
 
     // ---- 检查无效消息 ----
@@ -1348,10 +1257,6 @@ class ChatService(
 
     // 停止当前会话生成任务（不清理会话缓存）
     suspend fun stopGeneration(conversationId: Uuid) {
-        // agent 模式下取消协程只是停止"等待", pi 进程还在跑 —— 必须显式打断它
-        if (agentRuntime.isRunning) {
-            agentRuntime.interrupt()
-        }
         val job = sessions[conversationId]?.getJob() ?: return
         job.cancel()
         runCatching { job.join() }

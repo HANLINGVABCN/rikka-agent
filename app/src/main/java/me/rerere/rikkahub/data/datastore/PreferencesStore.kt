@@ -139,8 +139,6 @@ class SettingsStore(
         val TUNNEL_API_TOKEN = stringPreferencesKey("tunnel_api_token")
         val TUNNEL_ID = stringPreferencesKey("tunnel_id")
         val TUNNEL_HOSTNAME = stringPreferencesKey("tunnel_hostname")
-        val AGENT_MODE_ENABLED = booleanPreferencesKey("agent_mode_enabled")
-        val AGENT_MODE_WORKSPACE_ID = stringPreferencesKey("agent_mode_workspace_id")
         val WEB_SERVER_ACCESS_PASSWORD = stringPreferencesKey("web_server_access_password")
         val WEB_SERVER_LOCALHOST_ONLY = booleanPreferencesKey("web_server_localhost_only")
 
@@ -249,8 +247,6 @@ class SettingsStore(
                 tunnelApiToken = preferences[TUNNEL_API_TOKEN] ?: "",
                 tunnelId = preferences[TUNNEL_ID] ?: "",
                 tunnelHostname = preferences[TUNNEL_HOSTNAME] ?: "",
-                agentModeEnabled = preferences[AGENT_MODE_ENABLED] == true,
-                agentModeWorkspaceId = preferences[AGENT_MODE_WORKSPACE_ID] ?: "",
                 backupReminderConfig = preferences[BACKUP_REMINDER_CONFIG]?.let {
                     JsonInstant.decodeFromString(it)
                 } ?: BackupReminderConfig(),
@@ -425,8 +421,6 @@ class SettingsStore(
             preferences[TUNNEL_API_TOKEN] = settings.tunnelApiToken
             preferences[TUNNEL_ID] = settings.tunnelId
             preferences[TUNNEL_HOSTNAME] = settings.tunnelHostname
-            preferences[AGENT_MODE_ENABLED] = settings.agentModeEnabled
-            preferences[AGENT_MODE_WORKSPACE_ID] = settings.agentModeWorkspaceId
             preferences[BACKUP_REMINDER_CONFIG] = JsonInstant.encodeToString(settings.backupReminderConfig)
             preferences[LAUNCH_COUNT] = settings.launchCount
             preferences[SPONSOR_ALERT_DISMISSED_AT] = settings.sponsorAlertDismissedAt
@@ -577,9 +571,6 @@ data class Settings(
     val tunnelApiToken: String = "",
     val tunnelId: String = "",
     val tunnelHostname: String = "",
-    // Agent 模式: 开启后 chat 的对话整个交给容器里的 pi, 主模型不参与
-    val agentModeEnabled: Boolean = false,
-    val agentModeWorkspaceId: String = "",
     val backupReminderConfig: BackupReminderConfig = BackupReminderConfig(),
     val launchCount: Int = 0,
     val sponsorAlertDismissedAt: Int = 0,

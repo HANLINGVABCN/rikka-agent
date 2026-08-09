@@ -1,90 +1,117 @@
 package me.rerere.rikkahub.data.agent
 
 import android.util.Log
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
+import kotlinx.serialization.json.contentOrNull
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
 import me.rerere.ai.provider.ProviderSetting
 import me.rerere.rikkahub.data.datastore.SettingsStore
 import me.rerere.rikkahub.data.datastore.findProvider
 import me.rerere.rikkahub.data.datastore.getCurrentChatModel
 import me.rerere.workspace.ProotProcessLauncher
+import java.util.concurrent.ConcurrentHashMap
 
 private const val TAG = "AgentRuntime"
 
+// agent 可能跑很久(装包、编译), 但不能无限等 —— 超时只停止等待, pi 进程仍在容器里
+private const val TASK_TIMEOUT_MS = 30 * 60 * 1000L
+
 /**
- * Agent 模式的运行时。
+ * 容器内 pi agent 的运行时。
  *
- * 打开 agent 模式后, chat 的对话**整个交给容器里的 pi** —— 用户消息直接送进
- * pi 的 RPC 会话, pi 的流式输出就是助手回复。主模型完全不参与, 因此也不存在
- * "主模型调用 agent 工具"这回事。
+ * pi 以**工具**的形式提供给模型(`workspace_agent`), 而不是接管对话 —— 对话历史、
+ * 分支、重新生成全部仍由 app 这边管理, 与上游的 workspace 工具是同一套模型。
  *
- * 会话是长驻的: 同一个对话里的多轮消息进同一个 pi 进程, 上下文由 pi 自己维护。
+ * pi 用的是当前 chat 选中的那个模型和 API key, 用户不需要另外配置。
  */
 class AgentRuntime(
     private val launcher: ProotProcessLauncher,
     private val settingsStore: SettingsStore,
 ) {
-    private var session: PiRpcSession? = null
-    private var sessionRoot: String? = null
+    /** 已确认装好 pi 的 workspace —— 避免每次建工具都去容器里查一次 */
+    private val deployed = ConcurrentHashMap.newKeySet<String>()
 
-    private val _state = MutableStateFlow<AgentRuntimeState>(AgentRuntimeState.Stopped)
-    val state: StateFlow<AgentRuntimeState> = _state.asStateFlow()
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
-    val isRunning: Boolean get() = session?.isAlive == true
+    fun isDeployed(workspaceId: String): Boolean = deployed.contains(workspaceId)
+
+    /** 由部署流程在装好后调用 */
+    fun markDeployed(workspaceId: String) {
+        deployed.add(workspaceId)
+    }
+
+    fun markNotDeployed(workspaceId: String) {
+        deployed.remove(workspaceId)
+    }
 
     /**
-     * 确保 pi 会话就绪。
+     * 交给 pi 一个任务, 等它自己迭代到做完, 返回最终报告。
      *
-     * provider 与 model 取自当前设置里选中的那个 —— agent 用跟 chat 同一个模型,
-     * 免得用户要配两次。API key 从 [ProviderSetting] 里取。
+     * 每个任务一个独立的 pi 进程: 任务之间不该共享上下文 —— 模型每次调用工具时给的是
+     * 一个自包含的目标, 上一个任务的历史留着只会污染判断, 也会让 token 越滚越多。
      */
-    suspend fun ensureSession(workspaceId: String): Result<PiRpcSession> {
-        val existing = session
-        if (existing != null && existing.isAlive && sessionRoot == workspaceId) {
-            return Result.success(existing)
-        }
-        stop()
-
+    suspend fun runTask(workspaceId: String, task: String): Result<String> {
         val settings = settingsStore.settingsFlow.first()
         val model = settings.getCurrentChatModel()
             ?: return Result.failure(IllegalStateException("No chat model selected"))
         val provider = model.findProvider(settings.providers)
             ?: return Result.failure(IllegalStateException("Model has no provider"))
-
         val piProvider = provider.toPiProviderName()
             ?: return Result.failure(
-                IllegalStateException("Provider ${provider.name} is not supported by pi")
+                IllegalStateException("Provider ${provider.name} is not supported by pi (needs Anthropic/OpenAI/Google)")
             )
         val apiKey = provider.apiKeyOrNull().orEmpty()
         if (apiKey.isBlank()) {
             return Result.failure(IllegalStateException("Provider ${provider.name} has no API key"))
         }
 
-        _state.value = AgentRuntimeState.Starting
-        return runCatching {
-            PiRpcSession(launcher = launcher, root = workspaceId).also {
-                it.start(provider = piProvider, model = model.modelId, apiKey = apiKey)
-                session = it
-                sessionRoot = workspaceId
-                _state.value = AgentRuntimeState.Running(workspaceId)
+        val session = PiRpcSession(launcher = launcher, root = workspaceId)
+        return try {
+            session.start(provider = piProvider, model = model.modelId, apiKey = apiKey)
+
+            val transcript = StringBuilder()
+            val settled = CompletableDeferred<Unit>()
+            // 结束判定放在同一个 collector 里: events 是 replay=0 的 SharedFlow,
+            // 事后再 first{} 的话, pi 回得快时结束事件会在订阅建立前就发完, 一路等到超时
+            val collector = scope.launch {
+                session.events.collect { event ->
+                    event.piTextDelta()?.let { transcript.append(it) }
+                    if (event.piSettled()) settled.complete(Unit)
+                }
             }
-        }.onFailure {
-            Log.e(TAG, "Failed to start pi session", it)
-            _state.value = AgentRuntimeState.Failed(it.message ?: "start failed")
+
+            try {
+                // launch 只是排队, 协程可能还没开始 collect —— 等订阅真正建立再发
+                session.events.subscriptionCount.first { it > 0 }
+
+                if (session.prompt(task) == null) {
+                    return Result.failure(IllegalStateException("pi rejected the task"))
+                }
+                val finished = withTimeoutOrNull(TASK_TIMEOUT_MS) { settled.await() } != null
+                val report = transcript.toString().trim()
+                Result.success(
+                    when {
+                        report.isNotBlank() && finished -> report
+                        report.isNotBlank() -> "$report\n\n[timed out after 30 minutes]"
+                        else -> "Agent finished without producing any output."
+                    }
+                )
+            } finally {
+                collector.cancel()
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Agent task failed", e)
+            Result.failure(e)
+        } finally {
+            session.stop()
         }
-    }
-
-    fun stop() {
-        session?.stop()
-        session = null
-        sessionRoot = null
-        _state.value = AgentRuntimeState.Stopped
-    }
-
-    fun interrupt() {
-        session?.interrupt()
     }
 
     private companion object {
@@ -103,11 +130,4 @@ class AgentRuntime(
             else -> null
         }
     }
-}
-
-sealed interface AgentRuntimeState {
-    data object Stopped : AgentRuntimeState
-    data object Starting : AgentRuntimeState
-    data class Running(val workspaceId: String) : AgentRuntimeState
-    data class Failed(val message: String) : AgentRuntimeState
 }

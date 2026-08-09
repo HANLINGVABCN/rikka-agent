@@ -307,8 +307,6 @@ fun ChatInput(
                                 )
                             }
 
-                            AgentModeButton()
-
                         }
 
                         ActionIconButton(
@@ -423,96 +421,6 @@ private fun ActionIconButton(
         ) {
             content()
         }
-    }
-}
-
-/**
- * Agent 模式开关。
- *
- * 打开后这个对话**整个交给容器里的 pi** —— 主模型不再参与, 用户消息直接进 pi,
- * pi 的输出就是回复。所以要先选一个装了 agent 的容器。
- */
-@Composable
-private fun AgentModeButton() {
-    val settings = LocalSettings.current
-    val settingsStore: SettingsStore = koinInject()
-    val workspaceRepository: WorkspaceRepository = koinInject()
-    val scope = rememberCoroutineScope()
-    val toaster = LocalToaster.current
-    var showPicker by remember { mutableStateOf(false) }
-    val workspaces by workspaceRepository.listFlow().collectAsStateWithLifecycle(emptyList())
-
-    val enabled = settings.agentModeEnabled
-    val noWorkspaceMsg = stringResource(R.string.agent_mode_no_workspace)
-
-    ActionIconButton(
-        onClick = {
-            if (enabled) {
-                scope.launch { settingsStore.update { it.copy(agentModeEnabled = false) } }
-            } else {
-                val ready = workspaces.filter { it.shellStatus == WorkspaceShellStatus.READY.name }
-                when {
-                    ready.isEmpty() -> toaster.show(noWorkspaceMsg)
-                    // 只有一个就别让用户多点一次
-                    ready.size == 1 -> scope.launch {
-                        settingsStore.update {
-                            it.copy(
-                                agentModeEnabled = true,
-                                agentModeWorkspaceId = ready.first().id.toString(),
-                            )
-                        }
-                    }
-
-                    else -> showPicker = true
-                }
-            }
-        },
-    ) {
-        Icon(
-            imageVector = HugeIcons.Bash,
-            contentDescription = stringResource(R.string.agent_mode),
-            tint = if (enabled) {
-                MaterialTheme.colorScheme.primary
-            } else {
-                LocalContentColor.current
-            },
-        )
-    }
-
-    if (showPicker) {
-        AlertDialog(
-            onDismissRequest = { showPicker = false },
-            title = { Text(stringResource(R.string.agent_mode_pick_workspace)) },
-            text = {
-                Column {
-                    workspaces
-                        .filter { it.shellStatus == WorkspaceShellStatus.READY.name }
-                        .forEach { workspace ->
-                            TextButton(
-                                onClick = {
-                                    scope.launch {
-                                        settingsStore.update {
-                                            it.copy(
-                                                agentModeEnabled = true,
-                                                agentModeWorkspaceId = workspace.id.toString(),
-                                            )
-                                        }
-                                    }
-                                    showPicker = false
-                                },
-                                modifier = Modifier.fillMaxWidth(),
-                            ) {
-                                Text(workspace.name)
-                            }
-                        }
-                }
-            },
-            confirmButton = {
-                TextButton(onClick = { showPicker = false }) {
-                    Text(stringResource(R.string.cancel))
-                }
-            },
-        )
     }
 }
 

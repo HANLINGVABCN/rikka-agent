@@ -434,10 +434,6 @@
   <string name="no_text_content_to_copy">No text content available to copy</string>
   <string name="notification_channel_chat_completed">Chat Completed</string>
   <string name="notification_channel_chat_live_update">Chat Generation Progress</string>
-  <string name="agent_mode">Agent mode</string>
-  <string name="agent_mode_error_title">Agent error</string>
-  <string name="agent_mode_no_workspace">No container with a ready shell. Install a rootfs and deploy the agent first.</string>
-  <string name="agent_mode_pick_workspace">Pick a container</string>
   <string name="notification_channel_container">Container</string>
   <string name="notification_channel_tunnel">Tunnel</string>
   <string name="notification_channel_web_server">Web Server</string>
@@ -1222,6 +1218,7 @@
   <string name="workspace_detail_persistent_desc">Keeps one long-lived shell alive so working directory, environment variables and background processes survive between commands. Required for running an agent inside the container.</string>
   <string name="workspace_detail_persistent_on">Running</string>
   <string name="workspace_detail_persistent_off">Stopped</string>
+  <string name="workspace_detail_tool_agent">Delegate task to agent</string>
   <string name="workspace_detail_agent">AI Agent (pi)</string>
   <string name="workspace_detail_agent_desc">Installs Node.js and the pi coding agent inside this container. Downloads about 50 MB and needs a network connection. Requires the container to keep running.</string>
   <string name="workspace_detail_agent_deploy">Deploy agent</string>
