@@ -13,6 +13,7 @@ import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
@@ -52,6 +53,17 @@ class PiRpcSession(
         onBufferOverflow = BufferOverflow.DROP_OLDEST,
     )
     val events: SharedFlow<JsonObject> = _events.asSharedFlow()
+
+    /**
+     * 等到至少有一个订阅者接上 [events] 再返回。
+     *
+     * [events] 是 replay=0 的 SharedFlow: 在订阅建立前发出的事件会被直接丢弃。
+     * 调用方必须在 [prompt] 之前 await 这个, 否则 pi 回得快时(尤其是立刻报错)
+     * 结束事件会丢失, 等待方一路挂到超时。
+     */
+    suspend fun awaitSubscriber() {
+        _events.subscriptionCount.first { it > 0 }
+    }
 
     private val _running = MutableStateFlow(false)
     val running: StateFlow<Boolean> = _running.asStateFlow()

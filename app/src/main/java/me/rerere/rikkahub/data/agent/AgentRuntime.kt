@@ -89,7 +89,7 @@ class AgentRuntime(
 
             try {
                 // launch 只是排队, 协程可能还没开始 collect —— 等订阅真正建立再发
-                session.events.subscriptionCount.first { it > 0 }
+                session.awaitSubscriber()
 
                 if (session.prompt(task) == null) {
                     return Result.failure(IllegalStateException("pi rejected the task"))
