@@ -19,11 +19,13 @@ android {
     compileSdk = 37
 
     defaultConfig {
-        applicationId = "me.rerere.rikkahub"
+        // 与上游 RikkaHub 不同的 applicationId —— 同包名会导致无法与官方版共存,
+        // 且签名不同时直接装不上。Kotlin 包名仍是 me.rerere.rikkahub, 便于合并上游代码。
+        applicationId = "me.rerere.rikkaagent"
         minSdk = 26
         targetSdk = 37
-        versionCode = 172
-        versionName = "2.4.5"
+        versionCode = 1
+        versionName = "0.1.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 

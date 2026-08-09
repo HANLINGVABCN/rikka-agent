@@ -65,7 +65,7 @@ jobs:
                 "client_info": {
                   "mobilesdk_app_id": "1:000000000000:android:0000000000000000000000",
                   "android_client_info": {
-                    "package_name": "me.rerere.rikkahub"
+                    "package_name": "me.rerere.rikkaagent"
                   }
                 },
                 "oauth_client": [],
@@ -80,7 +80,7 @@ jobs:
                 "client_info": {
                   "mobilesdk_app_id": "1:000000000000:android:1111111111111111111111",
                   "android_client_info": {
-                    "package_name": "me.rerere.rikkahub.debug"
+                    "package_name": "me.rerere.rikkaagent.debug"
                   }
                 },
                 "oauth_client": [],
