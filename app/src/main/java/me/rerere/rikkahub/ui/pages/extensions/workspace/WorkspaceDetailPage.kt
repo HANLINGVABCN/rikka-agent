@@ -504,7 +504,7 @@ private fun AgentInstallCard(
                     }
                 },
                 enabled = workspaceId != null && rootfsReady &&
-                    installState !is AgentInstallState.Deploying,
+                    installState !is AgentInstallState.Installing,
                 modifier = Modifier.fillMaxWidth(),
             ) {
                 Icon(HugeIcons.Bash, contentDescription = null)
