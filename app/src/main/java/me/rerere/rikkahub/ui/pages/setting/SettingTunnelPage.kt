@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExtendedFloatingActionButton
 import androidx.compose.material3.Icon
@@ -35,6 +36,7 @@ import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
@@ -59,7 +61,6 @@ import me.rerere.rikkahub.ui.context.LocalSettings
 import me.rerere.rikkahub.ui.context.LocalToaster
 import me.rerere.rikkahub.ui.theme.CustomColors
 import me.rerere.rikkahub.utils.plus
-import me.rerere.rikkahub.web.WebServerManager
 import me.rerere.tunnel.CloudflareApi
 import me.rerere.tunnel.CloudflaredManager
 import me.rerere.tunnel.TunnelRunner
@@ -76,10 +77,8 @@ fun SettingTunnelPage() {
     val settingsStore: SettingsStore = koinInject()
     val tunnelRunner: TunnelRunner = koinInject()
     val cloudflareApi: CloudflareApi = koinInject()
-    val webServerManager: WebServerManager = koinInject()
     val settings = LocalSettings.current
     val tunnelState by tunnelRunner.state.collectAsStateWithLifecycle()
-    val webState by webServerManager.state.collectAsStateWithLifecycle()
     val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
@@ -92,10 +91,13 @@ fun SettingTunnelPage() {
     var hostnameText by remember(settings.tunnelHostname) {
         mutableStateOf(settings.tunnelHostname)
     }
+    var portText by remember(settings.tunnelPort) { mutableStateOf(settings.tunnelPort.toString()) }
     var tokenVisible by remember { mutableStateOf(false) }
     var busy by remember { mutableStateOf(false) }
 
     val binaryReady = remember { CloudflaredManager.isBinaryReady(context) }
+    // 只有转发内置 web 服务那个端口时, app 的访问密码才与隧道有关
+    val exposingWebServer = settings.tunnelPort == settings.webServerPort
     val authConfigured = settings.webServerAccessPassword.isNotBlank()
     val configured = settings.tunnelId.isNotBlank() && settings.tunnelHostname.isNotBlank()
 
@@ -128,9 +130,9 @@ fun SettingTunnelPage() {
                         scope.launch { settingsStore.update { it.copy(tunnelEnabled = false) } }
                         return@ExtendedFloatingActionButton
                     }
-                    // 隧道开启会强制 JWT(见 Settings.effectiveJwtEnabled), 而密码为空时
-                    // 所有路由 fail-closed —— 不拦住的话用户会把自己锁在外面
-                    if (!authConfigured) {
+                    // 转发内置 web 服务时会强制 JWT(见 Settings.effectiveJwtEnabled),
+                    // 密码为空则所有路由 fail-closed —— 不拦的话用户会把自己锁在外面
+                    if (exposingWebServer && !authConfigured) {
                         toaster.show(authRequiredMessage)
                         return@ExtendedFloatingActionButton
                     }
@@ -216,14 +218,7 @@ fun SettingTunnelPage() {
                             },
                         )
                     }
-                    if (!webState.isRunning) {
-                        item(
-                            headlineContent = {
-                                Text(stringResource(R.string.setting_page_tunnel_web_required))
-                            },
-                        )
-                    }
-                    if (!authConfigured) {
+                    if (exposingWebServer && !authConfigured) {
                         item(
                             headlineContent = {
                                 Text(
@@ -232,7 +227,7 @@ fun SettingTunnelPage() {
                                 )
                             },
                         )
-                    } else {
+                    } else if (exposingWebServer) {
                         item(
                             headlineContent = {
                                 Text(stringResource(R.string.setting_page_tunnel_auth_forced))
@@ -276,6 +271,30 @@ fun SettingTunnelPage() {
                                 singleLine = true,
                                 enabled = !tunnelState.isRunning,
                                 modifier = Modifier.width(180.dp),
+                                shape = CircleShape,
+                                colors = transparentFieldColors(),
+                            )
+                        },
+                    )
+                    item(
+                        headlineContent = { Text(stringResource(R.string.setting_page_tunnel_port)) },
+                        supportingContent = { Text(stringResource(R.string.setting_page_tunnel_port_desc)) },
+                        trailingContent = {
+                            TextField(
+                                value = portText,
+                                onValueChange = { value ->
+                                    portText = value.filter { it.isDigit() }.take(5)
+                                    portText.toIntOrNull()?.takeIf { it in 1..65535 }?.let { port ->
+                                        scope.launch {
+                                            settingsStore.update { it.copy(tunnelPort = port) }
+                                        }
+                                    }
+                                },
+                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                                singleLine = true,
+                                isError = portText.toIntOrNull()?.let { it !in 1..65535 } ?: true,
+                                enabled = !tunnelState.isRunning,
+                                modifier = Modifier.width(100.dp),
                                 shape = CircleShape,
                                 colors = transparentFieldColors(),
                             )
@@ -334,7 +353,7 @@ fun SettingTunnelPage() {
                                                     api = cloudflareApi,
                                                     apiToken = apiTokenText,
                                                     hostname = hostnameText,
-                                                    port = settings.webServerPort,
+                                                    port = settings.tunnelPort,
                                                     existingTunnelId = settings.tunnelId,
                                                 )
                                             }

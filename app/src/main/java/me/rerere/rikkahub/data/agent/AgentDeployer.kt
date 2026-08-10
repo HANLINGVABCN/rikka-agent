@@ -90,6 +90,8 @@ class AgentDeployer(
             return@withContext Result.failure(IllegalStateException(message))
         }
 
+        _state.value = AgentDeployState.Deploying("正在安装 Node.js 与 pi，首次约需 3-10 分钟…")
+
         val result = runCatching {
             workspaceManager.executeCommand(
                 root = root,
@@ -105,6 +107,13 @@ class AgentDeployer(
         }
 
         val log = (result.stdout + "\n" + result.stderr).trim()
+        // 超时要单独报: 与"脚本跑完但失败"是两码事, 用户能采取的行动也不同
+        if (result.timedOut) {
+            val message = "部署超时（10 分钟）。通常是网络太慢或软件源不可达，请检查网络后重试。\n\n" +
+                log.takeLast(MAX_ERROR_CHARS)
+            _state.value = AgentDeployState.Failed(message)
+            return@withContext Result.failure(IllegalStateException("Deploy timed out"))
+        }
         return@withContext if (result.exitCode == 0) {
             val version = runCatching {
                 workspaceManager.executeCommand(

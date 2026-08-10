@@ -27,6 +27,12 @@ class PersistentProotShellRunner(
         if (session == null || !session.isAlive) {
             return fallback.execute(context)
         }
+        // 长任务(装包、编译)不能走常驻会话: 那条 bash 是单管道, 一次只能跑一条命令,
+        // 期间整个容器的其它命令(含 UI 的状态刷新)全部排队等待, 表现就是界面卡死。
+        // 这类任务交给一次性进程, 与常驻会话并行跑。
+        if (context.timeoutMillis > LONG_TASK_THRESHOLD_MS) {
+            return fallback.execute(context)
+        }
         return session.execute(
             command = context.command,
             cwd = context.cwd,
@@ -77,6 +83,8 @@ class PersistentProotShellRunner(
     )
 
     private companion object {
+        /** 超过这个时长的命令视为长任务, 不占用常驻会话的管道 */
+        private const val LONG_TASK_THRESHOLD_MS = 60_000L
         private const val FILES_DIR = "files"
         private const val LINUX_DIR = "linux"
         private const val TEMP_DIR = "tmp"

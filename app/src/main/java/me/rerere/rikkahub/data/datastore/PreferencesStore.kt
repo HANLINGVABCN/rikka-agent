@@ -139,6 +139,7 @@ class SettingsStore(
         val TUNNEL_API_TOKEN = stringPreferencesKey("tunnel_api_token")
         val TUNNEL_ID = stringPreferencesKey("tunnel_id")
         val TUNNEL_HOSTNAME = stringPreferencesKey("tunnel_hostname")
+        val TUNNEL_PORT = intPreferencesKey("tunnel_port")
         val WEB_SERVER_ACCESS_PASSWORD = stringPreferencesKey("web_server_access_password")
         val WEB_SERVER_LOCALHOST_ONLY = booleanPreferencesKey("web_server_localhost_only")
 
@@ -247,6 +248,7 @@ class SettingsStore(
                 tunnelApiToken = preferences[TUNNEL_API_TOKEN] ?: "",
                 tunnelId = preferences[TUNNEL_ID] ?: "",
                 tunnelHostname = preferences[TUNNEL_HOSTNAME] ?: "",
+                tunnelPort = preferences[TUNNEL_PORT] ?: 8080,
                 backupReminderConfig = preferences[BACKUP_REMINDER_CONFIG]?.let {
                     JsonInstant.decodeFromString(it)
                 } ?: BackupReminderConfig(),
@@ -421,6 +423,7 @@ class SettingsStore(
             preferences[TUNNEL_API_TOKEN] = settings.tunnelApiToken
             preferences[TUNNEL_ID] = settings.tunnelId
             preferences[TUNNEL_HOSTNAME] = settings.tunnelHostname
+            preferences[TUNNEL_PORT] = settings.tunnelPort
             preferences[BACKUP_REMINDER_CONFIG] = JsonInstant.encodeToString(settings.backupReminderConfig)
             preferences[LAUNCH_COUNT] = settings.launchCount
             preferences[SPONSOR_ALERT_DISMISSED_AT] = settings.sponsorAlertDismissedAt
@@ -565,12 +568,13 @@ data class Settings(
     val webServerJwtEnabled: Boolean = false,
     val webServerAccessPassword: String = "",
     val webServerLocalhostOnly: Boolean = false,
-    // 隧道转发: 把上面这个 web 服务经 cloudflared 暴露到公网。
-    // 注意 tunnelEnabled 为 true 时 JWT 是强制的, 见 Settings.effectiveJwtEnabled。
+    // 隧道转发: 把**本机任意一个端口**经 cloudflared 暴露到公网 —— 可以是内置 web 服务,
+    // 也可以是容器里跑的任何服务。tunnelPort 决定转发目标。
     val tunnelEnabled: Boolean = false,
     val tunnelApiToken: String = "",
     val tunnelId: String = "",
     val tunnelHostname: String = "",
+    val tunnelPort: Int = 8080,
     val backupReminderConfig: BackupReminderConfig = BackupReminderConfig(),
     val launchCount: Int = 0,
     val sponsorAlertDismissedAt: Int = 0,
@@ -578,14 +582,14 @@ data class Settings(
     /**
      * 实际生效的 JWT 开关。
      *
-     * 隧道把 web 服务暴露到**公网**, 而 workspace_shell 在远程会话里是自动批准的 ——
-     * 认证是唯一一道闸。因此隧道开启时无条件强制 JWT, 不看用户怎么设
-     * ([webServerJwtEnabled] 只在局域网模式下有意义)。
+     * 只有当隧道**正在转发内置 web 服务那个端口**时才强制认证 —— 那种情况下 chat API
+     * 直接暴露在公网, 而 workspace_shell 在远程会话里是自动批准的, 认证是唯一一道闸。
+     * 隧道转发容器里其它端口时与 app 的认证无关, 不该牵连。
      *
      * 所有认证判断都必须读这个属性而不是 [webServerJwtEnabled], 否则会绕开该约束。
      */
     val effectiveJwtEnabled: Boolean
-        get() = webServerJwtEnabled || tunnelEnabled
+        get() = webServerJwtEnabled || (tunnelEnabled && tunnelPort == webServerPort)
 
     companion object {
         // 构造一个用于初始化的settings, 但它不能用于保存，防止使用初始值存储

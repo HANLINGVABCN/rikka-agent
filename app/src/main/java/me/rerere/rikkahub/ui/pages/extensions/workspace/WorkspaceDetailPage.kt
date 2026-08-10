@@ -477,6 +477,20 @@ private fun AgentDeployCard(
                     color = MaterialTheme.colorScheme.error,
                 )
 
+                // 部署要几分钟且全程无输出, 不给提示的话用户分不清"在装"和"卡死"
+                is AgentDeployState.Deploying -> {
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+                        if (state.log.isNotBlank()) {
+                            Text(
+                                text = state.log,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                    }
+                }
+
                 else -> Unit
             }
 
