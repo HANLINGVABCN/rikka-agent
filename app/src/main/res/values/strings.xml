@@ -914,6 +914,8 @@
   <string name="setting_page_tunnel_verified">Verified: %s</string>
   <string name="setting_page_tunnel_hostname">Hostname</string>
   <string name="setting_page_tunnel_hostname_desc">Full domain, e.g. chat.example.com. Must be hosted on the same Cloudflare account.</string>
+  <string name="setting_page_tunnel_port">Forward port</string>
+  <string name="setting_page_tunnel_port_desc">Local port to expose publicly. Can be the built-in web server, or any service running inside the container.</string>
   <string name="setting_page_tunnel_setup">Create tunnel and route</string>
   <string name="setting_page_tunnel_setup_desc">Creates the tunnel, writes ingress config and the DNS record</string>
   <string name="setting_page_tunnel_setup_done">Tunnel is configured</string>
