@@ -53,8 +53,8 @@ suspend fun createWorkspaceTools(
         createEditFileTool(workspaceId, ::needsApproval, workspaceRepository),
         createShellTool(workspaceId, ::needsApproval, workspaceRepository, shellCwd),
     ) + listOfNotNull(
-        // agent 未部署时不暴露这个工具 —— 让模型调一个必然失败的工具只会浪费一轮
-        agentRuntime?.takeIf { it.isDeployed(workspaceId) }
+        // agent 未安装时不暴露这个工具 —— 让模型调一个必然失败的工具只会浪费一轮
+        agentRuntime?.takeIf { it.isInstalled(workspaceId) }
             ?.let { createAgentTaskTool(workspaceId, it, ::needsApproval) },
     )
 }

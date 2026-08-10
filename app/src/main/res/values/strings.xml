@@ -1222,10 +1222,10 @@
   <string name="workspace_detail_persistent_off">Stopped</string>
   <string name="workspace_detail_tool_agent">Delegate task to agent</string>
   <string name="workspace_detail_agent">AI Agent (pi)</string>
-  <string name="workspace_detail_agent_desc">Installs Node.js and the pi coding agent inside this container. Downloads about 50 MB and needs a network connection. Requires the container to keep running.</string>
-  <string name="workspace_detail_agent_deploy">Deploy agent</string>
-  <string name="workspace_detail_agent_redeploy">Redeploy</string>
-  <string name="workspace_detail_agent_deploying">Deploying…</string>
+  <string name="workspace_detail_agent_desc">The pi coding agent is bundled with the app. Enabling it unpacks the built-in Node.js runtime into this container — no download, no network needed.</string>
+  <string name="workspace_detail_agent_deploy">Enable agent</string>
+  <string name="workspace_detail_agent_redeploy">Reinstall</string>
+  <string name="workspace_detail_agent_deploying">Installing…</string>
   <string name="workspace_detail_agent_ready">Ready: %s</string>
   <string name="workspace_detail_enable_shell_desc">Allow this workspace to run a terminal environment using local Rootfs</string>
   <string name="workspace_detail_tool_approval">Tool Approval</string>

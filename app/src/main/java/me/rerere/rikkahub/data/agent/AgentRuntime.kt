@@ -36,19 +36,19 @@ class AgentRuntime(
     private val settingsStore: SettingsStore,
 ) {
     /** 已确认装好 pi 的 workspace —— 避免每次建工具都去容器里查一次 */
-    private val deployed = ConcurrentHashMap.newKeySet<String>()
+    private val installed = ConcurrentHashMap.newKeySet<String>()
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
-    fun isDeployed(workspaceId: String): Boolean = deployed.contains(workspaceId)
+    fun isInstalled(workspaceId: String): Boolean = installed.contains(workspaceId)
 
-    /** 由部署流程在装好后调用 */
-    fun markDeployed(workspaceId: String) {
-        deployed.add(workspaceId)
+    /** 由安装流程在解压完成后调用 */
+    fun markInstalled(workspaceId: String) {
+        installed.add(workspaceId)
     }
 
-    fun markNotDeployed(workspaceId: String) {
-        deployed.remove(workspaceId)
+    fun markNotInstalled(workspaceId: String) {
+        installed.remove(workspaceId)
     }
 
     /**

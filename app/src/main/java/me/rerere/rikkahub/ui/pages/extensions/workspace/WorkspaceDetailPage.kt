@@ -75,8 +75,8 @@ import me.rerere.rikkahub.data.ai.tools.resolveWorkspaceToolApproval
 import me.rerere.rikkahub.data.db.entity.WorkspaceEntity
 import androidx.compose.ui.res.stringResource
 import me.rerere.rikkahub.R
-import me.rerere.rikkahub.data.agent.AgentDeployState
-import me.rerere.rikkahub.data.agent.AgentDeployer
+import me.rerere.rikkahub.data.agent.AgentInstallState
+import me.rerere.rikkahub.data.agent.AgentInstaller
 import me.rerere.rikkahub.service.ContainerService
 import me.rerere.rikkahub.ui.components.nav.BackButton
 import me.rerere.rikkahub.ui.components.ui.ImagePreviewDialog
@@ -405,7 +405,7 @@ private fun WorkspaceBasicPage(
         }
 
         item {
-            AgentDeployCard(
+            AgentInstallCard(
                 workspaceId = workspace?.id?.toString(),
                 rootfsReady = rootfsReady,
             )
@@ -427,18 +427,18 @@ private fun WorkspaceBasicPage(
  * 合适。这里只负责触发和显示结果。
  */
 @Composable
-private fun AgentDeployCard(
+private fun AgentInstallCard(
     workspaceId: String?,
     rootfsReady: Boolean,
 ) {
-    val deployer: AgentDeployer = koinInject()
-    val deployState by deployer.state.collectAsStateWithLifecycle()
+    val installer: AgentInstaller = koinInject()
+    val installState by installer.state.collectAsStateWithLifecycle()
     val scope = rememberCoroutineScope()
     val toaster = LocalToaster.current
 
     LaunchedEffect(workspaceId, rootfsReady) {
         if (workspaceId != null && rootfsReady) {
-            runCatching { deployer.check(workspaceId) }
+            runCatching { installer.check(workspaceId) }
         }
     }
 
@@ -464,26 +464,26 @@ private fun AgentDeployCard(
                 )
             }
 
-            when (val state = deployState) {
-                is AgentDeployState.Ready -> Text(
+            when (val state = installState) {
+                is AgentInstallState.Ready -> Text(
                     text = stringResource(R.string.workspace_detail_agent_ready, state.version),
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.primary,
                 )
 
-                is AgentDeployState.Failed -> Text(
+                is AgentInstallState.Failed -> Text(
                     text = state.message,
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.error,
                 )
 
                 // 部署要几分钟且全程无输出, 不给提示的话用户分不清"在装"和"卡死"
-                is AgentDeployState.Deploying -> {
+                is AgentInstallState.Installing -> {
                     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
-                        if (state.log.isNotBlank()) {
+                        if (state.message.isNotBlank()) {
                             Text(
-                                text = state.log,
+                                text = state.message,
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
@@ -498,22 +498,22 @@ private fun AgentDeployCard(
                 onClick = {
                     val id = workspaceId ?: return@Button
                     scope.launch {
-                        deployer.deploy(id)
+                        installer.install(id)
                             .onSuccess { toaster.show("OK") }
                             .onFailure { toaster.show(it.message ?: "failed") }
                     }
                 },
                 enabled = workspaceId != null && rootfsReady &&
-                    deployState !is AgentDeployState.Deploying,
+                    installState !is AgentInstallState.Deploying,
                 modifier = Modifier.fillMaxWidth(),
             ) {
                 Icon(HugeIcons.Bash, contentDescription = null)
                 Text(
-                    text = when (deployState) {
-                        is AgentDeployState.Deploying ->
+                    text = when (installState) {
+                        is AgentInstallState.Installing ->
                             stringResource(R.string.workspace_detail_agent_deploying)
 
-                        is AgentDeployState.Ready ->
+                        is AgentInstallState.Ready ->
                             stringResource(R.string.workspace_detail_agent_redeploy)
 
                         else -> stringResource(R.string.workspace_detail_agent_deploy)

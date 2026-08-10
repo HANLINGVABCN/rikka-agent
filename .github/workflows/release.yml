@@ -50,6 +50,16 @@ jobs:
             ~/.gradle/wrapper
           key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
 
+      - name: 构建内置 agent 运行时
+        env:
+          AGENT_ARCH: arm64
+        run: bash scripts/build-agent-bundle.sh
+
+      - name: 构建内置 agent 运行时 (x64)
+        env:
+          AGENT_ARCH: x64
+        run: bash scripts/build-agent-bundle.sh
+
       - name: 下载并内置 cloudflared
         env:
           GITHUB_TOKEN: ${{ github.token }}

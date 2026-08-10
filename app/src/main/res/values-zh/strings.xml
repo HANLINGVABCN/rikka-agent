@@ -1320,10 +1320,10 @@ mDNS 地址：使用 .local 主机名，同一网络中的其他设备可通过�
   <string name="workspace_detail_persistent_off">已停止</string>
   <string name="workspace_detail_tool_agent">委派任务给 agent</string>
   <string name="workspace_detail_agent">AI Agent（pi）</string>
-  <string name="workspace_detail_agent_desc">在容器内安装 Node.js 和 pi 编码 agent。需要下载约 50MB，请保持联网。安装后聊天时模型即可委派多步骤任务。</string>
-  <string name="workspace_detail_agent_deploy">部署 agent</string>
-  <string name="workspace_detail_agent_redeploy">重新部署</string>
-  <string name="workspace_detail_agent_deploying">部署中…</string>
+  <string name="workspace_detail_agent_desc">pi agent 已随应用内置。启用时把内置的 Node.js 运行时解压到本容器，无需下载、无需联网。</string>
+  <string name="workspace_detail_agent_deploy">启用 agent</string>
+  <string name="workspace_detail_agent_redeploy">重新安装</string>
+  <string name="workspace_detail_agent_deploying">安装中…</string>
   <string name="workspace_detail_agent_ready">已就绪：%s</string>
 </resources>
 

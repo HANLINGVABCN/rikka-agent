@@ -98,6 +98,16 @@ class RootfsInstaller(
         }
     }
 
+    /**
+     * 解压一个本地 tar 包到目标目录。
+     *
+     * 供内置 agent bundle 使用 —— 与 rootfs 走同一套解压实现, 符号链接逃逸检查、
+     * 权限位、pax 头处理都不用重写一遍。
+     */
+    fun extractArchive(archive: File, targetDir: File) {
+        extractTar(archive, targetDir) { }
+    }
+
     internal fun extractTar(
         archive: File,
         targetDir: File,

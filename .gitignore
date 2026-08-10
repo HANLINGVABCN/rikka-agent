@@ -17,3 +17,6 @@ local.properties
 /keystore/
 *.jks
 *.keystore
+
+# 内置 agent 运行时: CI 构建产物, 不进仓库(每个约 30MB)
+/app/src/main/assets/agent/

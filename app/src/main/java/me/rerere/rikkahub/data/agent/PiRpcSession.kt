@@ -85,7 +85,8 @@ class PiRpcSession(
         val proc = launcher.launch(
             root = root,
             command = listOf(
-                "pi",
+                // 走内置运行时的绝对路径, 不依赖容器里装了什么、PATH 是怎么设的
+                PI_LAUNCHER,
                 "--mode", "rpc",
                 "--provider", provider,
                 "--model", model,
@@ -202,6 +203,8 @@ class PiRpcSession(
     }
 
     private companion object {
+        /** 内置 bundle 解压后的启动器位置, 与 AgentInstaller.INSTALL_DIR 对应 */
+        private const val PI_LAUNCHER = "/opt/rikka-agent/runtime/pi/pi"
         private const val EVENT_BUFFER = 256
         private const val READ_CHUNK = 8192
 
